@@ -4,15 +4,15 @@
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org)
 
-**Unlock >60fps on macOS for Tauri v2 apps.** One line of code. 120Hz ProMotion, 144Hz+ external displays — your Tauri app finally renders at the display's native refresh rate.
+**Unlock >60fps on macOS for Tauri v2 apps.** One line of code. 120Hz ProMotion, 144Hz+ external displays — your Tauri app renders at the display's native refresh rate.
+
+> **macOS 26+ (Tahoe):** Apple removed the 60fps cap entirely in macOS 26. WKWebView now renders at native refresh rate by default. This plugin is a **no-op on macOS 26+** and is most useful for users on **macOS 13–15** (Ventura through Sequoia) where the cap is still enforced.
 
 ---
 
 ## The problem
 
-WKWebView on macOS **caps `requestAnimationFrame` at 60fps** — regardless of your display's actual refresh rate. Your MacBook Pro has a 120Hz ProMotion display? Your Tauri app is stuck at 60fps. Your external monitor runs at 144Hz or 240Hz? Still 60fps.
-
-Meanwhile, native macOS apps and even Safari tabs render at the full display refresh rate.
+On **macOS 13–15**, WKWebView **caps `requestAnimationFrame` at 60fps** — regardless of your display's actual refresh rate. Your MacBook Pro has a 120Hz ProMotion display? Your Tauri app is stuck at 60fps. Your external monitor runs at 144Hz or 240Hz? Still 60fps.
 
 This is tracked in:
 - [tauri-apps/tauri#13978](https://github.com/tauri-apps/tauri/issues/13978) — closed as "not planned"
@@ -20,11 +20,11 @@ This is tracked in:
 
 The Tauri maintainers said *"WKWebView simply does not expose settings for that."*
 
-They're wrong.
+They were wrong.
 
 ## The fix
 
-WebKit has an internal preference called `PreferPageRenderingUpdatesNear60FPSEnabled` (defaults to `true`). This plugin sets it to `false` via the private `_features` API on `WKPreferences` — the same mechanism Safari uses internally to control frame rate behavior.
+WebKit has an internal preference called `PreferPageRenderingUpdatesNear60FPSEnabled` (defaults to `true`). This plugin sets it to `false` via the private `_features` API on `WKPreferences` — the same mechanism Safari uses internally.
 
 ```rust
 fn main() {
@@ -63,11 +63,27 @@ cargo install tauri-cli --version "^2"
 cargo tauri dev
 ```
 
-The app shows a real-time FPS counter with a large display. You should see:
-- **Without plugin:** ~60 FPS (WKWebView cap)
-- **With plugin (default):** 120 FPS on ProMotion, 144+ on high-refresh external displays
+The app shows a real-time FPS counter with a large display, min/max/avg stats, a live graph, and a toggle button to switch between locked (60fps) and unlocked (native) in real time.
 
-A toggle button lets you switch between locked (60fps) and unlocked (native) in real time.
+### Expected results
+
+| macOS version | Without plugin | With plugin |
+|---|---|---|
+| **macOS 13–15** (Ventura–Sequoia) | ~60 FPS | 120 FPS on ProMotion, 144+ on external |
+| **macOS 26+** (Tahoe) | Already native refresh rate | No change (no-op) |
+
+## macOS version compatibility
+
+| macOS | 60fps cap exists? | Plugin effect |
+|---|---|---|
+| **13 Ventura** | Yes | Unlocks native refresh rate |
+| **14 Sonoma** | Yes | Unlocks native refresh rate |
+| **15 Sequoia** | Yes | Unlocks native refresh rate |
+| **26 Tahoe** | **No** — Apple removed the cap | No-op (already unlocked) |
+
+On macOS 26+, the `PreferPageRenderingUpdatesNear60FPSEnabled` preference still exists in WebKit's feature list and can be toggled, but WKWebView ignores it. The plugin detects this gracefully and logs success, though the toggle has no observable effect.
+
+Tested on macOS 26.3.1 (Build 25D2128) with a 120Hz ProMotion display and a 165Hz external monitor — both ran at native refresh rate with or without the plugin.
 
 ## Configuration
 
@@ -118,7 +134,8 @@ The plugin hooks into Tauri's `on_webview_ready` lifecycle event. Every webview 
 
 | Platform | Effect |
 |---|---|
-| **macOS** (WKWebView) | Unlocks native refresh rate (120Hz ProMotion, 144Hz+, etc.) |
+| **macOS 13–15** (WKWebView) | Unlocks native refresh rate (120Hz ProMotion, 144Hz+, etc.) |
+| **macOS 26+** (WKWebView) | No-op — Apple removed the cap, already runs at native refresh rate |
 | **Windows** (WebView2) | No-op — WebView2 already renders at native refresh rate |
 | **Linux** (WebKitGTK) | No-op — typically 60fps, no known toggle |
 | **iOS** (WKWebView) | No-op — untested, may work in future versions |
