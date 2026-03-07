@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FPS Diagnostics</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --orange: #d29922;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, monospace;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+    user-select: none;
+  }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
+
+  /* FPS Display */
+  .fps-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .fps-value {
+    font-size: 72px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    transition: color 0.3s;
+  }
+  .fps-label { color: var(--text-dim); font-size: 14px; margin-top: 4px; }
+  .fps-stats {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .fps-stats span { font-variant-numeric: tabular-nums; }
+  .fps-stats .val { color: var(--text); font-weight: 600; }
+
+  /* Canvas for animation driver */
+  #animCanvas {
+    width: 100%;
+    height: 60px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    display: block;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  button {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: border-color 0.2s;
+  }
+  button:hover { border-color: var(--accent); }
+  button.active { border-color: var(--green); color: var(--green); }
+
+  /* Keys table */
+  .keys-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .keys-header {
+    padding: 12px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .key-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    gap: 12px;
+  }
+  .key-row:last-child { border-bottom: none; }
+  .key-name {
+    flex: 1;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 12px;
+    word-break: break-all;
+  }
+  .key-value {
+    min-width: 50px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .key-value.false { color: var(--green); }
+  .key-value.true { color: var(--red); }
+  .toggle-btn {
+    padding: 4px 12px;
+    font-size: 11px;
+    min-width: 70px;
+  }
+
+  /* FPS graph */
+  .graph-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .graph-label { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
+  #fpsGraph {
+    width: 100%;
+    height: 80px;
+    display: block;
+    border-radius: 4px;
+  }
+
+  .note {
+    color: var(--text-dim);
+    font-size: 11px;
+    margin-top: 16px;
+    line-height: 1.5;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .note code {
+    background: var(--bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<h1>WebKit 60fps Cap Diagnostic</h1>
+<p class="subtitle">Tests NSUserDefaults keys for PreferPageRenderingUpdatesNear60FPSEnabled</p>
+
+<!-- FPS Counter -->
+<div class="fps-panel">
+  <div class="fps-value" id="fpsDisplay">--</div>
+  <div class="fps-label">frames per second</div>
+  <div class="fps-stats">
+    <div>min: <span class="val" id="fpsMin">--</span></div>
+    <div>max: <span class="val" id="fpsMax">--</span></div>
+    <div>avg: <span class="val" id="fpsAvg">--</span></div>
+    <div>frame: <span class="val" id="frameTime">--</span> ms</div>
+  </div>
+</div>
+
+<!-- FPS History Graph -->
+<div class="graph-panel">
+  <div class="graph-label">FPS History (last 200 frames)</div>
+  <canvas id="fpsGraph"></canvas>
+</div>
+
+<!-- Animation canvas (drives rAF) -->
+<canvas id="animCanvas"></canvas>
+
+<!-- Bulk Controls -->
+<div class="controls">
+  <button id="btnUncap" onclick="uncapAll()">Set All = false (uncap)</button>
+  <button id="btnCap" onclick="capAll()">Set All = true (cap)</button>
+  <button onclick="refreshKeys()">Refresh Keys</button>
+  <button onclick="resetStats()">Reset Stats</button>
+</div>
+
+<!-- Keys Table -->
+<div class="keys-panel">
+  <div class="keys-header">
+    <span>NSUserDefaults Keys</span>
+    <span id="keyCount"></span>
+  </div>
+  <div id="keysContainer">Loading...</div>
+</div>
+
+<div class="note">
+  <strong>How this works:</strong> On startup, the Rust backend calls
+  <code>[[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"..."]</code>
+  for every key variation <em>before</em> the WKWebView is created. This is a
+  100% public, App Store-safe API. The FPS counter above uses
+  <code>requestAnimationFrame</code> to measure the actual frame rate delivered
+  by the webview. If any key successfully disables the 60fps cap, you should see
+  FPS values above 60 on a ProMotion display. Toggle individual keys to isolate
+  which one (if any) has an effect. <strong>Note:</strong> toggling keys at runtime
+  may not take effect until the webview is recreated (restart the app after changing).
+</div>
+
+<script>
+// ─── Tauri IPC ───────────────────────────────────────────
+const { invoke } = window.__TAURI__.core;
+
+async function refreshKeys() {
+  const keys = await invoke('get_all_keys');
+  renderKeys(keys);
+}
+
+async function toggleKey(key, newValue) {
+  const keys = await invoke('toggle_key', { key, value: newValue });
+  renderKeys(keys);
+}
+
+async function uncapAll() {
+  const keys = await invoke('uncap_all');
+  renderKeys(keys);
+}
+
+async function capAll() {
+  const keys = await invoke('cap_all');
+  renderKeys(keys);
+}
+
+function renderKeys(keys) {
+  const container = document.getElementById('keysContainer');
+  document.getElementById('keyCount').textContent = keys.length + ' keys';
+  container.innerHTML = keys.map(k => `
+    <div class="key-row">
+      <span class="key-name">${k.key}</span>
+      <span class="key-value ${k.value}">${k.value}</span>
+      <button class="toggle-btn" onclick="toggleKey('${k.key}', ${!k.value})">
+        Set ${!k.value}
+      </button>
+    </div>
+  `).join('');
+}
+
+// ─── FPS Counter ─────────────────────────────────────────
+let frames = 0;
+let lastTime = performance.now();
+let fps = 0;
+let fpsMin = Infinity;
+let fpsMax = 0;
+let fpsSum = 0;
+let fpsSamples = 0;
+let lastFrameTime = 0;
+const fpsHistory = [];
+const MAX_HISTORY = 200;
+
+function resetStats() {
+  fpsMin = Infinity;
+  fpsMax = 0;
+  fpsSum = 0;
+  fpsSamples = 0;
+  fpsHistory.length = 0;
+  document.getElementById('fpsMin').textContent = '--';
+  document.getElementById('fpsMax').textContent = '--';
+  document.getElementById('fpsAvg').textContent = '--';
+}
+
+// ─── Animation Canvas (ensures rAF is actively driven) ──
+const animCanvas = document.getElementById('animCanvas');
+const animCtx = animCanvas.getContext('2d');
+let animPhase = 0;
+
+function resizeAnimCanvas() {
+  animCanvas.width = animCanvas.clientWidth * devicePixelRatio;
+  animCanvas.height = animCanvas.clientHeight * devicePixelRatio;
+  animCtx.scale(devicePixelRatio, devicePixelRatio);
+}
+resizeAnimCanvas();
+window.addEventListener('resize', resizeAnimCanvas);
+
+function drawAnim(now) {
+  const w = animCanvas.clientWidth;
+  const h = animCanvas.clientHeight;
+  animCtx.clearRect(0, 0, w, h);
+
+  // Scrolling sine wave to keep GPU busy
+  animPhase += 0.03;
+  animCtx.beginPath();
+  animCtx.strokeStyle = '#58a6ff';
+  animCtx.lineWidth = 2;
+  for (let x = 0; x < w; x++) {
+    const y = h / 2 + Math.sin((x / w) * 8 * Math.PI + animPhase) * (h * 0.35);
+    if (x === 0) animCtx.moveTo(x, y);
+    else animCtx.lineTo(x, y);
+  }
+  animCtx.stroke();
+
+  // Secondary wave
+  animCtx.beginPath();
+  animCtx.strokeStyle = '#3fb95066';
+  animCtx.lineWidth = 1.5;
+  for (let x = 0; x < w; x++) {
+    const y = h / 2 + Math.sin((x / w) * 12 * Math.PI - animPhase * 1.3) * (h * 0.25);
+    if (x === 0) animCtx.moveTo(x, y);
+    else animCtx.lineTo(x, y);
+  }
+  animCtx.stroke();
+}
+
+// ─── FPS Graph ───────────────────────────────────────────
+const graphCanvas = document.getElementById('fpsGraph');
+const graphCtx = graphCanvas.getContext('2d');
+
+function resizeGraph() {
+  graphCanvas.width = graphCanvas.clientWidth * devicePixelRatio;
+  graphCanvas.height = graphCanvas.clientHeight * devicePixelRatio;
+  graphCtx.scale(devicePixelRatio, devicePixelRatio);
+}
+resizeGraph();
+window.addEventListener('resize', resizeGraph);
+
+function drawGraph() {
+  const w = graphCanvas.clientWidth;
+  const h = graphCanvas.clientHeight;
+  graphCtx.clearRect(0, 0, w, h);
+
+  if (fpsHistory.length < 2) return;
+
+  // Reference lines
+  const maxFps = 144;
+  const lines = [30, 60, 90, 120];
+  graphCtx.font = '10px monospace';
+  for (const ref of lines) {
+    const y = h - (ref / maxFps) * h;
+    graphCtx.strokeStyle = '#30363d';
+    graphCtx.lineWidth = 1;
+    graphCtx.beginPath();
+    graphCtx.moveTo(0, y);
+    graphCtx.lineTo(w, y);
+    graphCtx.stroke();
+    graphCtx.fillStyle = '#484f58';
+    graphCtx.fillText(ref + '', 2, y - 2);
+  }
+
+  // FPS line
+  graphCtx.beginPath();
+  graphCtx.strokeStyle = '#58a6ff';
+  graphCtx.lineWidth = 1.5;
+  const step = w / (MAX_HISTORY - 1);
+  const offset = MAX_HISTORY - fpsHistory.length;
+  for (let i = 0; i < fpsHistory.length; i++) {
+    const x = (offset + i) * step;
+    const y = h - (Math.min(fpsHistory[i], maxFps) / maxFps) * h;
+    if (i === 0) graphCtx.moveTo(x, y);
+    else graphCtx.lineTo(x, y);
+  }
+  graphCtx.stroke();
+
+  // 60fps threshold highlight
+  const y60 = h - (60 / maxFps) * h;
+  graphCtx.strokeStyle = '#f8514944';
+  graphCtx.lineWidth = 2;
+  graphCtx.setLineDash([4, 4]);
+  graphCtx.beginPath();
+  graphCtx.moveTo(0, y60);
+  graphCtx.lineTo(w, y60);
+  graphCtx.stroke();
+  graphCtx.setLineDash([]);
+  graphCtx.fillStyle = '#f85149';
+  graphCtx.fillText('60 fps cap', w - 60, y60 - 4);
+}
+
+// ─── Main Loop ───────────────────────────────────────────
+function tick(now) {
+  frames++;
+  const dt = now - lastFrameTime;
+  lastFrameTime = now;
+
+  const elapsed = now - lastTime;
+  if (elapsed >= 500) {
+    fps = Math.round((frames / elapsed) * 1000);
+    frames = 0;
+    lastTime = now;
+
+    // Update stats
+    if (fps > 0 && fps < 1000) {
+      if (fps < fpsMin) fpsMin = fps;
+      if (fps > fpsMax) fpsMax = fps;
+      fpsSum += fps;
+      fpsSamples++;
+
+      fpsHistory.push(fps);
+      if (fpsHistory.length > MAX_HISTORY) fpsHistory.shift();
+    }
+
+    // Update display
+    const display = document.getElementById('fpsDisplay');
+    display.textContent = fps;
+    if (fps > 65) {
+      display.style.color = 'var(--green)';
+    } else if (fps >= 55) {
+      display.style.color = 'var(--orange)';
+    } else {
+      display.style.color = 'var(--red)';
+    }
+
+    document.getElementById('fpsMin').textContent = fpsMin === Infinity ? '--' : fpsMin;
+    document.getElementById('fpsMax').textContent = fpsMax;
+    document.getElementById('fpsAvg').textContent = fpsSamples > 0 ? Math.round(fpsSum / fpsSamples) : '--';
+    document.getElementById('frameTime').textContent = dt > 0 ? dt.toFixed(1) : '--';
+
+    drawGraph();
+  }
+
+  drawAnim(now);
+  requestAnimationFrame(tick);
+}
+
+// ─── Init ────────────────────────────────────────────────
+refreshKeys();
+lastFrameTime = performance.now();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

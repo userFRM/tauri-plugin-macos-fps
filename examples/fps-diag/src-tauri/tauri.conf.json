@@ -1,0 +1,27 @@
+{
+  "productName": "fps-diag",
+  "version": "0.1.0",
+  "identifier": "com.fps-diag.test",
+  "build": {
+    "frontendDist": "../src",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "FPS Diagnostics - NSUserDefaults WebKit Preference Test",
+        "width": 900,
+        "height": 700
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/icon.png"
+    ]
+  }
+}
