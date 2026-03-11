@@ -12,8 +12,8 @@
 //! Each `_WKFeature` has a `.key` property. We find our target key and toggle it
 //! via `_setEnabled:forFeature:` on the preferences instance.
 
-use objc2::msg_send;
-use objc2::runtime::{AnyClass, AnyObject, Bool};
+use objc2::{msg_send, sel};
+use objc2::runtime::{AnyClass, AnyObject, Bool, Sel};
 
 const TARGET_KEY: &str = "PreferPageRenderingUpdatesNear60FPSEnabled";
 
@@ -47,6 +47,20 @@ unsafe fn set_60fps_cap(wk_webview_ptr: *mut std::ffi::c_void, enabled: bool) ->
         log::warn!("tauri-plugin-macos-fps: WKPreferences class not found");
         return false;
     };
+    // Verify the private _features selector exists before calling it.
+    // Without this check, msg_send! panics on unrecognized selectors, and
+    // that panic crosses the FFI boundary in with_webview — causing an abort.
+    let sel_features: Sel = sel!(_features);
+    let responds: Bool =
+        unsafe { msg_send![wk_prefs_class, respondsToSelector: sel_features] };
+    if !responds.as_bool() {
+        log::warn!(
+            "tauri-plugin-macos-fps: WKPreferences does not respond to _features \
+             (private API unavailable on this macOS version)"
+        );
+        return false;
+    }
+
     let features: *mut AnyObject = unsafe { msg_send![wk_prefs_class, _features] };
     if features.is_null() {
         log::warn!(
@@ -70,6 +84,18 @@ unsafe fn set_60fps_cap(wk_webview_ptr: *mut std::ffi::c_void, enabled: bool) ->
         // Compare the key string
         let key_nsstring = unsafe { &*(key as *const objc2_foundation::NSString) };
         if key_nsstring.to_string() == TARGET_KEY {
+            // Verify _setEnabled:forFeature: exists on this preferences instance
+            let sel_set: Sel = sel!(_setEnabled:forFeature:);
+            let can_set: Bool =
+                unsafe { msg_send![preferences, respondsToSelector: sel_set] };
+            if !can_set.as_bool() {
+                log::warn!(
+                    "tauri-plugin-macos-fps: WKPreferences does not respond to \
+                     _setEnabled:forFeature: (private API unavailable)"
+                );
+                return false;
+            }
+
             let objc_bool = Bool::new(enabled);
             let _: () =
                 unsafe { msg_send![preferences, _setEnabled: objc_bool, forFeature: feature] };

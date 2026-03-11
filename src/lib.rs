@@ -94,8 +94,13 @@ impl<R: Runtime> MacFpsExt<R> for Webview<R> {
     fn unlock_fps(&self) -> tauri::Result<()> {
         #[cfg(target_os = "macos")]
         {
-            self.with_webview(|webview| unsafe {
-                macos::disable_60fps_cap(webview.inner());
+            self.with_webview(|webview| {
+                let ptr = webview.inner();
+                if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                    macos::disable_60fps_cap(ptr);
+                })) {
+                    log::error!("tauri-plugin-macos-fps: panic in unlock_fps: {:?}", e);
+                }
             })?;
         }
         Ok(())
@@ -104,8 +109,13 @@ impl<R: Runtime> MacFpsExt<R> for Webview<R> {
     fn lock_fps(&self) -> tauri::Result<()> {
         #[cfg(target_os = "macos")]
         {
-            self.with_webview(|webview| unsafe {
-                macos::enable_60fps_cap(webview.inner());
+            self.with_webview(|webview| {
+                let ptr = webview.inner();
+                if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                    macos::enable_60fps_cap(ptr);
+                })) {
+                    log::error!("tauri-plugin-macos-fps: panic in lock_fps: {:?}", e);
+                }
             })?;
         }
         Ok(())
@@ -147,8 +157,18 @@ pub fn init<R: Runtime>() -> TauriPlugin<R, Config> {
 
             #[cfg(target_os = "macos")]
             {
-                let _ = webview.with_webview(|wv| unsafe {
-                    macos::disable_60fps_cap(wv.inner());
+                let _ = webview.with_webview(|wv| {
+                    let ptr = wv.inner();
+                    if let Err(e) =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                            macos::disable_60fps_cap(ptr);
+                        }))
+                    {
+                        log::error!(
+                            "tauri-plugin-macos-fps: panic in on_webview_ready: {:?}",
+                            e
+                        );
+                    }
                 });
             }
 
